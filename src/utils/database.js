@@ -1,5 +1,3 @@
-// src/utils/database.js
-
 import initSqlJs from 'sql.js';
 
 const DATABASE_NAME = 'diary.db';
@@ -12,10 +10,10 @@ export const initDb = async () => {
 
   try {
     const SQL = await initSqlJs({
-      locateFile: file => '/sql-wasm.wasm' // Path to the .wasm file in the public folder
+      locateFile: file => '/sql-wasm.wasm' // Path to the Wasm file in public/
     });
 
-    // Load existing database from localStorage or create a new one
+    // Load the saved database from localStorage if it exists
     const savedDb = localStorage.getItem(DATABASE_NAME);
     if (savedDb) {
       const uInt8Array = Uint8Array.from(atob(savedDb), c => c.charCodeAt(0));
@@ -30,7 +28,7 @@ export const initDb = async () => {
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
-      saveDb();
+      saveDb(); // Save the new database to localStorage
     }
 
     return dbInstance;
@@ -55,7 +53,7 @@ export const addEntry = (content) => {
   const stmt = dbInstance.prepare("INSERT INTO entries (content) VALUES (?)");
   stmt.run([content]);
   stmt.free();
-  saveDb();
+  saveDb(); // Save the updated database to localStorage
 };
 
 // Function to get all entries
@@ -69,4 +67,67 @@ export const getEntries = () => {
   }
   stmt.free();
   return entries;
+};
+
+// Function to export the database and trigger a download
+export const exportDatabase = () => {
+  if (!dbInstance) {
+    console.error('Database not initialized.');
+    return;
+  }
+
+  try {
+    const binaryArray = dbInstance.export();
+    const blob = new Blob([binaryArray], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'diary.db'; // Default file name
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Failed to export the database:', error);
+  }
+};
+
+// Function to import a database from a File object
+export const importDatabase = async (file) => {
+  if (!(file instanceof File)) {
+    console.error('Invalid file.');
+    return;
+  }
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const uInt8Array = new Uint8Array(arrayBuffer);
+    const SQL = await initSqlJs({
+      locateFile: file => '/sql-wasm.wasm' // Ensure correct path
+    });
+
+    // Initialize the database with the imported data
+    dbInstance = new SQL.Database(uInt8Array);
+
+    // Optional: Verify the structure (e.g., check if 'entries' table exists)
+    const tablesStmt = dbInstance.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table';
+    `);
+    const tables = [];
+    while (tablesStmt.step()) {
+      const row = tablesStmt.getAsObject();
+      tables.push(row.name);
+    }
+    tablesStmt.free();
+
+    if (!tables.includes('entries')) {
+      throw new Error('Invalid database file: Missing "entries" table.');
+    }
+
+    saveDb(); // Save the imported database to localStorage
+    console.log('Database imported successfully.');
+  } catch (error) {
+    console.error('Failed to import the database:', error);
+    throw error;
+  }
 };

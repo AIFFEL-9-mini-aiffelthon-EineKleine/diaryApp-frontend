@@ -1,10 +1,8 @@
-// src/App.js
-
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { initDb, addEntry, getEntries } from './utils/database';
+import { initDb, addEntry, getEntries, exportDatabase, importDatabase } from './utils/database';
 
-// Styled Components
+// Styled Components (existing styles)
 const Container = styled.div`
   background: linear-gradient(to right, #ece9e6, #ffffff);
   min-height: 100vh;
@@ -45,7 +43,7 @@ const TextArea = styled.textarea`
 `;
 
 const Button = styled.button`
-  width: 100%;
+  width: 48%;
   padding: 12px;
   background-color: #495057;
   color: #ffffff;
@@ -53,12 +51,27 @@ const Button = styled.button`
   border-radius: 8px;
   font-size: 16px;
   cursor: pointer;
+  margin-right: 4%;
   &:hover {
     background-color: #343a40;
   }
   &:disabled {
     background-color: #adb5bd;
     cursor: not-allowed;
+  }
+`;
+
+const ImportButton = styled.button`
+  width: 48%;
+  padding: 12px;
+  background-color: #007bff;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  &:hover {
+    background-color: #0056b3;
   }
 `;
 
@@ -87,11 +100,19 @@ const EntryDate = styled.span`
   margin-bottom: 5px;
 `;
 
+// Hidden file input for importing
+const HiddenFileInput = styled.input`
+  display: none;
+`;
+
 function App() {
   const [content, setContent] = useState('');
   const [message, setMessage] = useState(null); // { text: '', error: boolean }
   const [entries, setEntries] = useState([]);
   const [dbInitialized, setDbInitialized] = useState(false);
+
+  // Reference to the hidden file input
+  const fileInputRef = React.createRef();
 
   // Initialize the database and fetch existing entries on component mount
   useEffect(() => {
@@ -146,6 +167,34 @@ function App() {
     }
   };
 
+  const handleExport = () => {
+    exportDatabase();
+    setMessage({ text: 'Database exported successfully.', error: false });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      try {
+        await importDatabase(file);
+        const allEntries = getEntries();
+        setEntries(allEntries);
+        setMessage({ text: 'Database imported successfully.', error: false });
+      } catch (error) {
+        setMessage({ text: 'Failed to import the database.', error: true });
+      } finally {
+        // Reset the file input
+        event.target.value = null;
+        setTimeout(() => setMessage(null), 3000);
+      }
+    }
+  };
+
   return (
     <Container>
       <DiaryBox>
@@ -155,9 +204,25 @@ function App() {
           value={content}
           onChange={(e) => setContent(e.target.value)}
         />
-        <Button onClick={handleSubmit} disabled={!dbInitialized}>
-          Save Entry
-        </Button>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Button onClick={handleSubmit} disabled={!dbInitialized}>
+            Save Entry
+          </Button>
+          <ImportButton onClick={handleImportClick}>
+            Import Database
+          </ImportButton>
+          <HiddenFileInput
+            type="file"
+            accept=".db,.sqlite"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+          />
+        </div>
+        <div style={{ marginTop: '10px', textAlign: 'center' }}>
+          <Button onClick={handleExport} disabled={!dbInitialized}>
+            Export Database
+          </Button>
+        </div>
         {message && <Message error={message.error}>{message.text}</Message>}
 
         {/* Display Entries */}
