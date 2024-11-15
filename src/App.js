@@ -145,12 +145,13 @@ function App() {
       setMessage({ text: 'Diary entry saved locally.', error: false });
 
       // Send POST request to FastAPI server
-      const response = await fetch('http://localhost:8000/api/diary', {
+      const response = await fetch('http://localhost:8000/answer', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'accept': 'application/json',
+          'content-type': 'application/json'
         },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ question: content })
       });
 
       const data = await response.json();
