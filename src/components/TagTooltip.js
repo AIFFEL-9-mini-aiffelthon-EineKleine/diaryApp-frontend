@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+// TagTooltip.js
+
+import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { SaveButton, DeleteTagButton } from './Buttons';
 
+// Styled Components
 const TooltipContainer = styled.div`
   position: absolute;
   bottom: 100%; /* Positions above the sentence */
   left: 50%;
-  transform: translate(-50%, -5px); /* 5px offset upwards for visual margin */
+  transform: translate(-50%); /* 5px offset removed for UX */
   background: #343a40;
   color: #fff;
   padding: 10px;
@@ -67,8 +70,16 @@ const CancelButton = styled.button`
   }
 `;
 
-function TagTooltip({ existingTags, onAddTag, onClose }) {
+// TagTooltip Component
+function TagTooltip({
+  existingTags,
+  onAddTag,
+  onClose,
+  onFocusInput, // New Prop
+  onBlurInput,  // New Prop
+}) {
   const [newTag, setNewTag] = useState('');
+  const inputRef = useRef(null);
 
   const handleAdd = () => {
     if (newTag.trim() !== '') {
@@ -77,11 +88,31 @@ function TagTooltip({ existingTags, onAddTag, onClose }) {
     }
   };
 
+  // useEffect to handle focus and blur events on the input
+  useEffect(() => {
+    const inputElement = inputRef.current;
+    if (!inputElement) return;
+
+    const handleFocus = () => {
+      if (onFocusInput) onFocusInput();
+    };
+
+    const handleBlur = () => {
+      if (onBlurInput) onBlurInput();
+    };
+
+    inputElement.addEventListener('focus', handleFocus);
+    inputElement.addEventListener('blur', handleBlur);
+
+    // Cleanup event listeners on unmount
+    return () => {
+      inputElement.removeEventListener('focus', handleFocus);
+      inputElement.removeEventListener('blur', handleBlur);
+    };
+  }, [onFocusInput, onBlurInput]);
+
   return (
-    <TooltipContainer
-      role="dialog"
-      aria-labelledby="tag-tooltip-title"
-    >
+    <TooltipContainer role="dialog" aria-labelledby="tag-tooltip-title">
       <div>
         <strong id="tag-tooltip-title">Tags:</strong>
         <div>
@@ -91,6 +122,7 @@ function TagTooltip({ existingTags, onAddTag, onClose }) {
         </div>
       </div>
       <TagInput
+        ref={inputRef}
         type="text"
         placeholder="Add a tag..."
         value={newTag}
@@ -109,11 +141,17 @@ function TagTooltip({ existingTags, onAddTag, onClose }) {
         <option value="Personal" />
         <option value="Ideas" />
         <option value="Important" />
-        <option value="Review" />
+        <option value="⭐" />
       </datalist>
       <TagActions>
-        <CancelButton onClick={onClose} aria-label="Cancel adding tag">Cancel</CancelButton>
-        <SaveButton onClick={handleAdd} style={{ padding: '5px 10px', fontSize: '14px' }}>
+        <CancelButton onClick={onClose} aria-label="Cancel adding tag">
+          Cancel
+        </CancelButton>
+        <SaveButton
+          onClick={handleAdd}
+          style={{ padding: '5px 10px', fontSize: '14px' }}
+          aria-label="Add tag"
+        >
           Add
         </SaveButton>
       </TagActions>
