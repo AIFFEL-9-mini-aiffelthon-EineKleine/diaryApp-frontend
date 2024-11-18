@@ -1,5 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled, { css } from 'styled-components';
+import Container from './components/Container';
+import DiaryBox from './components/DiaryBox';
+import Title from './components/Title';
+import TextArea from './components/TextArea';
+import { SaveButton, ImportButton, ExportButton, DeleteTagButton } from './components/Buttons';
+import { ToggleContainer, ToggleLabel, ToggleSwitch } from './components/Toggle';
+import { ServerInputContainer, ServerInput } from './components/ServerInput';
+import Message from './components/Message';
+import { EntryList, EntryItem, EntryDate } from './components/EntryList';
+import { Sentence, Tooltip } from './components/Tagging';
+import { ModalOverlay, ModalContent, CloseButton } from './components/Modal';
+
 import { 
   initDb, 
   addEntry, 
@@ -8,282 +20,13 @@ import {
   importDatabase,
   addTag,
   getTagsForEntry,
-  deleteTag
+  deleteTag,
+  syncWithServer
 } from './utils/database';
 import { splitIntoSentences } from './utils/helpers';
 
-// Styled Components
-const Container = styled.div`
-  background: linear-gradient(to right, #ece9e6, #ffffff);
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-`;
-
-const DiaryBox = styled.div`
-  background: #f8f9fa;
-  padding: 40px;
-  border-radius: 12px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  width: 90%;
-  max-width: 600px;
-  position: relative;
-`;
-
-const Title = styled.h1`
-  text-align: center;
-  color: #343a40;
-  margin-bottom: 20px;
-`;
-
-const TextArea = styled.textarea`
-  width: 100%;
-  height: 200px;
-  padding: 12px;
-  border: 2px solid #ced4da;
-  border-radius: 8px;
-  resize: vertical;
-  font-size: 16px;
-  font-family: inherit;
-  margin-bottom: 20px;
-  &:focus {
-    outline: none;
-    border-color: #495057;
-  }
-`;
-
-const Button = styled.button`
-  width: 48%;
-  padding: 12px;
-  background-color: #495057;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  margin-right: 4%;
-  &:hover {
-    background-color: #343a40;
-  }
-  &:disabled {
-    background-color: #adb5bd;
-    cursor: not-allowed;
-  }
-`;
-
-const ImportButton = styled.button`
-  width: 48%;
-  padding: 12px;
-  background-color: #007bff;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  &:hover {
-    background-color: #0056b3;
-  }
-`;
-
-const ToggleContainer = styled.div`
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  display: flex;
-  align-items: center;
-`;
-
-const ToggleLabel = styled.label`
-  margin-left: 10px;
-  font-size: 14px;
-  color: #343a40;
-`;
-
-const ToggleSwitch = styled.input.attrs({ type: 'checkbox' })`
-  width: 40px;
-  height: 20px;
-  -webkit-appearance: none;
-  background: #c6c6c6;
-  outline: none;
-  border-radius: 20px;
-  box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
-  transition: 0.3s;
-  cursor: pointer;
-  position: relative;
-
-  &:checked {
-    background: #495057;
-  }
-
-  &:before {
-    content: '';
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    top: 1px;
-    left: 1px;
-    background: white;
-    transition: 0.3s;
-  }
-
-  &:checked:before {
-    transform: translateX(20px);
-  }
-`;
-
-const ServerInputContainer = styled.div`
-  overflow: hidden;
-  max-height: 0;
-  transition: max-height 0.5s ease-out;
-  ${({ isOpen }) =>
-    isOpen &&
-    css`
-      max-height: 100px; /* Adjust based on content */
-      transition: max-height 0.5s ease-in;
-    `}
-  margin-top: 20px;
-`;
-
-const ServerInput = styled.input`
-  width: 100%;
-  padding: 10px;
-  border: 2px solid #ced4da;
-  border-radius: 8px;
-  font-size: 16px;
-  font-family: inherit;
-  &:focus {
-    outline: none;
-    border-color: #495057;
-  }
-`;
-
-const ExportButton = styled.button`
-  width: 100%;
-  padding: 12px;
-  background-color: #28a745;
-  color: #ffffff;
-  border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  cursor: pointer;
-  margin-top: 10px;
-  &:hover {
-    background-color: #218838;
-  }
-  &:disabled {
-    background-color: #adb5bd;
-    cursor: not-allowed;
-  }
-`;
-
-const Message = styled.p`
-  text-align: center;
-  color: ${props => (props.error ? '#dc3545' : '#28a745')};
-  margin-top: 15px;
-`;
-
-const EntryList = styled.div`
-  margin-top: 30px;
-`;
-
-const EntryItem = styled.div`
-  background: #ffffff;
-  padding: 15px;
-  border-left: 4px solid #495057;
-  margin-bottom: 10px;
-  border-radius: 4px;
-`;
-
-const EntryDate = styled.span`
-  display: block;
-  font-size: 12px;
-  color: #6c757d;
-  margin-bottom: 5px;
-`;
-
-// Hidden file input for importing
-const HiddenFileInput = styled.input`
-  display: none;
-`;
-
-// -- Additional styled components for tagging --
-const Sentence = styled.span`
-  position: relative;
-  cursor: pointer;
-  &:hover {
-    background-color: rgba(73, 80, 87, 0.3); /* Half-transparent highlight */
-  }
-`;
-
-const Tooltip = styled.div`
-  visibility: hidden;
-  background-color: #343a40;
-  color: #fff;
-  text-align: center;
-  border-radius: 6px;
-  padding: 5px;
-  position: absolute;
-  z-index: 1;
-  bottom: 125%; /* Position above the sentence */
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0;
-  transition: opacity 0.3s;
-  width: max-content;
-
-  ${Sentence}:hover & {
-    visibility: visible;
-    opacity: 1;
-  }
-`;
-
-// Modal for adding tags (simplified)
-const ModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-`;
-
-const ModalContent = styled.div`
-  background: #fff;
-  padding: 20px;
-  border-radius: 8px;
-  width: 300px;
-`;
-
-const CloseButton = styled.button`
-  background: none;
-  border: none;
-  font-size: 18px;
-  position: absolute;
-  top: 10px;
-  right: 20px;
-  cursor: pointer;
-`;
-
-// Add styled component for delete button
-const DeleteTagButton = styled.button`
-  background: none;
-  border: none;
-  color: #dc3545;
-  font-weight: bold;
-  margin-left: 10px;
-  cursor: pointer;
-  &:hover {
-    color: #a71d2a;
-  }
-`;
-
 function App() {
-  // Existing state variables
+  // State variables
   const [content, setContent] = useState('');
   const [message, setMessage] = useState(null); // { text: '', error: boolean }
   const [entries, setEntries] = useState([]);
@@ -299,6 +42,7 @@ function App() {
 
   const fileInputRef = useRef(null);
 
+  // Initialize database and synchronize with server if needed
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -314,8 +58,22 @@ function App() {
           allTags[entry.id] = tags;
         }
         setTagsMap(allTags);
+
+        // If server mode is on, synchronize local changes with the server
+        if (isServerMode) {
+          await syncWithServer(serverOrigin);
+          const updatedEntries = getEntries();
+          setEntries(updatedEntries);
+          // Update tagsMap again after synchronization
+          const updatedTags = {};
+          for (let entry of updatedEntries) {
+            const tags = getTagsForEntry(entry.id);
+            updatedTags[entry.id] = tags;
+          }
+          setTagsMap(updatedTags);
+        }
       } catch (error) {
-        console.error('Database initialization failed:', error);
+        console.error('Initialization failed:', error);
         setMessage({ text: 'Failed to initialize the database.', error: true });
       }
     };
@@ -380,8 +138,8 @@ function App() {
         return;
       }
 
-      // Confirm overwrite
-      const proceed = window.confirm('Importing a database will overwrite your current entries. Do you wish to continue?');
+      // Confirm overwrite and synchronization
+      const proceed = window.confirm('Importing a database will overwrite your current entries and synchronize with the server. Do you wish to continue?');
       if (!proceed) {
         event.target.value = null;
         return;
@@ -399,6 +157,19 @@ function App() {
           allTags[entry.id] = tags;
         }
         setTagsMap(allTags);
+
+        // If server mode is on, synchronize after import
+        if (isServerMode) {
+          await syncWithServer(serverOrigin);
+          const updatedEntries = getEntries();
+          setEntries(updatedEntries);
+          const updatedTags = {};
+          for (let entry of updatedEntries) {
+            const tags = getTagsForEntry(entry.id);
+            updatedTags[entry.id] = tags;
+          }
+          setTagsMap(updatedTags);
+        }
 
         setMessage({ text: 'Database imported successfully.', error: false });
       } catch (error) {
@@ -434,7 +205,7 @@ function App() {
     }
 
     try {
-      await addTag(currentEntryId, currentSentenceIndex, currentTag);
+      await addTag(currentEntryId, currentSentenceIndex, currentTag, isServerMode, serverOrigin);
       const tags = getTagsForEntry(currentEntryId);
       setTagsMap(prev => ({ ...prev, [currentEntryId]: tags }));
       setMessage({ text: 'Tag added successfully.', error: false });
@@ -446,7 +217,7 @@ function App() {
 
   const handleDeleteTag = async (entryId, tagId) => {
     try {
-      await deleteTag(tagId);
+      await deleteTag(tagId, isServerMode, serverOrigin);
       const tags = getTagsForEntry(entryId);
       setTagsMap(prev => ({ ...prev, [entryId]: tags }));
       setMessage({ text: 'Tag deleted successfully.', error: false });
@@ -472,17 +243,18 @@ function App() {
           onChange={(e) => setContent(e.target.value)}
         />
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Button onClick={handleSubmit} disabled={!dbInitialized}>
+          <SaveButton onClick={handleSubmit} disabled={!dbInitialized}>
             Save Entry
-          </Button>
+          </SaveButton>
           <ImportButton onClick={handleImportClick}>
             Import Database
           </ImportButton>
-          <HiddenFileInput
+          <input
             type="file"
             accept=".db,.sqlite"
             ref={fileInputRef}
             onChange={handleFileChange}
+            style={{ display: 'none' }}
           />
         </div>
         <ServerInputContainer isOpen={isServerInputVisible}>
@@ -510,17 +282,22 @@ function App() {
               <p style={{ whiteSpace: 'pre-wrap' }}>
                 {splitIntoSentences(entry.content).map((sentence, index) => {
                   const entryTags = tagsMap[entry.id] || [];
-                  const tag = entryTags.find(t => t.sentenceIndex === index);
+                  const tag = entryTags.filter(t => t.sentenceIndex === index);
                   return (
                     <Sentence 
                       key={index} 
                       onDoubleClick={() => handleAddTag(entry.id, index)}
                     >
                       {sentence.trim() + ' '}
-                      {tag && (
+                      {tag.length > 0 && (
                         <Tooltip>
-                          {tag.tag}
-                          <DeleteTagButton onClick={() => handleDeleteTag(entry.id, tag.id)}>✕</DeleteTagButton>
+                          {tag.map(t => (
+                            <span key={t.id}>
+                              {t.tag}
+                              <DeleteTagButton onClick={() => handleDeleteTag(entry.id, t.id)}>✕</DeleteTagButton>
+                              <br/>
+                            </span>
+                          ))}
                         </Tooltip>
                       )}
                     </Sentence>
@@ -544,9 +321,9 @@ function App() {
                 onChange={(e) => setCurrentTag(e.target.value)}
                 style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
               />
-              <Button onClick={handleSaveTag} style={{ width: '100%' }}>
+              <SaveButton onClick={handleSaveTag} style={{ width: '100%' }}>
                 Save Tag
-              </Button>
+              </SaveButton>
             </ModalContent>
           </ModalOverlay>
         )}

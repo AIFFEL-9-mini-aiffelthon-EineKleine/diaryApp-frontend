@@ -1,22 +1,33 @@
 import initSqlJs from 'sql.js';
 
+// Constants
 const LOCAL_DB_NAME = 'diary_local.db';
 const SERVER_DB_NAME = 'diary_server.db';
 
 let dbInstance = null;
-let serverOrigin = '';
+let SQLInstance = null;
+
+// Initialize SQL.js once
+const initializeSQL = async () => {
+  if (SQLInstance) return SQLInstance;
+  try {
+    SQLInstance = await initSqlJs({
+      locateFile: file => '/sql-wasm.wasm' // Ensure this path is correct
+    });
+    return SQLInstance;
+  } catch (error) {
+    console.error('Failed to initialize SQL.js:', error);
+    throw error;
+  }
+};
 
 // Initialize the database
 export const initDb = async (isServerMode = false, origin = '') => {
-  if (dbInstance) return dbInstance;
+  const SQL = await initializeSQL();
 
-  try {
-    const SQL = await initSqlJs({
-      locateFile: file => '/sql-wasm.wasm'
-    });
-
-    if (isServerMode && origin) {
-      // Fetch data from server
+  if (isServerMode && origin) {
+    // Initialize from server
+    try {
       const response = await fetch(`${origin}/api/diary`);
       if (!response.ok) {
         throw new Error('Failed to fetch data from server.');
@@ -25,75 +36,83 @@ export const initDb = async (isServerMode = false, origin = '') => {
 
       // Initialize in-memory DB and insert entries
       dbInstance = new SQL.Database();
-      dbInstance.run(`
-        CREATE TABLE IF NOT EXISTS entries (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          content TEXT NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-      dbInstance.run(`
-        CREATE TABLE IF NOT EXISTS tags (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          entry_id INTEGER NOT NULL,
-          sentence_index INTEGER NOT NULL,
-          tag TEXT NOT NULL,
-          FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
-        );
-      `);
-      const stmt = dbInstance.prepare("INSERT INTO entries (id, content, created_at) VALUES (?, ?, ?)");
-      entries.forEach(entry => {
-        stmt.run([entry.id, entry.content, entry.created_at]);
-      });
-      stmt.free();
+      createTables(dbInstance);
+      insertEntries(dbInstance, entries);
 
-      // Fetch tags for each entry
+      // Fetch and insert tags
       for (let entry of entries) {
         const tagResponse = await fetch(`${origin}/api/tags/${entry.id}`);
         if (tagResponse.ok) {
           const tags = await tagResponse.json();
-          tags.forEach(tag => {
-            dbInstance.run("INSERT INTO tags (entry_id, sentence_index, tag) VALUES (?, ?, ?)", [entry.id, tag.sentence_index, tag.tag]);
-          });
+          insertTags(dbInstance, entry.id, tags);
         }
       }
 
-      // Update localStorage as cache
-      saveDb(false); // false indicates it's server data
-    } else {
-      // Local-only mode
-      const savedDb = localStorage.getItem(LOCAL_DB_NAME);
-      if (savedDb) {
-        const uInt8Array = Uint8Array.from(atob(savedDb), c => c.charCodeAt(0));
-        dbInstance = new SQL.Database(uInt8Array);
-      } else {
-        dbInstance = new SQL.Database();
-        // Create the entries and tags tables
-        dbInstance.run(`
-          CREATE TABLE IF NOT EXISTS entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-          );
-        `);
-        dbInstance.run(`
-          CREATE TABLE IF NOT EXISTS tags (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            entry_id INTEGER NOT NULL,
-            sentence_index INTEGER NOT NULL,
-            tag TEXT NOT NULL,
-            FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
-          );
-        `);
-        saveDb(); // Save the new local database to localStorage
-      }
+      // Save to localStorage as cache
+      saveDb(false);
+    } catch (error) {
+      console.error('Failed to initialize from server:', error);
+      // Fallback to local
+      await initLocalDb();
     }
-
-    return dbInstance;
-  } catch (error) {
-    console.error('Failed to initialize SQL.js:', error);
-    throw error;
+  } else {
+    // Initialize local-only mode
+    await initLocalDb();
   }
+
+  return dbInstance;
+};
+
+// Initialize local database
+const initLocalDb = async () => {
+  const SQL = await initializeSQL();
+  const savedDb = localStorage.getItem(LOCAL_DB_NAME);
+  if (savedDb) {
+    const uInt8Array = Uint8Array.from(atob(savedDb), c => c.charCodeAt(0));
+    dbInstance = new SQL.Database(uInt8Array);
+  } else {
+    dbInstance = new SQL.Database();
+    createTables(dbInstance);
+    saveDb(); // Save the new local database to localStorage
+  }
+};
+
+// Create necessary tables
+const createTables = (db) => {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id INTEGER NOT NULL,
+      sentence_index INTEGER NOT NULL,
+      tag TEXT NOT NULL,
+      FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    );
+  `);
+};
+
+// Insert entries into the database
+const insertEntries = (db, entries) => {
+  const stmt = db.prepare("INSERT INTO entries (id, content, created_at) VALUES (?, ?, ?)");
+  for (let entry of entries) {
+    stmt.run([entry.id, entry.content, entry.created_at]);
+  }
+  stmt.free();
+};
+
+// Insert tags into the database
+const insertTags = (db, entryId, tags) => {
+  const stmt = db.prepare("INSERT INTO tags (id, entry_id, sentence_index, tag) VALUES (?, ?, ?, ?)");
+  for (let tag of tags) {
+    stmt.run([tag.id, entryId, tag.sentence_index, tag.tag]);
+  }
+  stmt.free();
 };
 
 // Save the database to localStorage
@@ -156,14 +175,32 @@ export const getEntries = () => {
 };
 
 // Tagging Functions
-export const addTag = (entryId, sentenceIndex, tag) => {
+export const addTag = async (entryId, sentenceIndex, tag, isServerMode = false, origin = '') => {
   if (!dbInstance) return;
 
   try {
     const stmt = dbInstance.prepare("INSERT INTO tags (entry_id, sentence_index, tag) VALUES (?, ?, ?)");
     stmt.run([entryId, sentenceIndex, tag]);
     stmt.free();
-    saveDb();
+    saveDb(!isServerMode);
+
+    if (isServerMode && origin) {
+      // Send tag to server
+      const response = await fetch(`${origin}/api/tags`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ entry_id: entryId, sentence_index: sentenceIndex, tag })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save tag to server.');
+      }
+
+      const data = await response.json();
+      console.log('Server Tag Response:', data);
+    }
   } catch (error) {
     console.error('Failed to add tag:', error);
     throw error;
@@ -183,14 +220,27 @@ export const getTagsForEntry = (entryId) => {
   return tags;
 };
 
-export const deleteTag = (tagId) => {
+export const deleteTag = async (tagId, isServerMode = false, origin = '') => {
   if (!dbInstance) return;
 
   try {
     const stmt = dbInstance.prepare("DELETE FROM tags WHERE id = ?");
     stmt.run([tagId]);
     stmt.free();
-    saveDb();
+    saveDb(!isServerMode);
+
+    if (isServerMode && origin) {
+      // Notify server about tag deletion
+      const response = await fetch(`${origin}/api/tags/${tagId}`, {
+        method: 'DELETE'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete tag from server.');
+      }
+
+      console.log('Server Tag Deletion Response:', response.status);
+    }
   } catch (error) {
     console.error('Failed to delete tag:', error);
     throw error;
@@ -229,9 +279,7 @@ export const importDatabase = async (file, isServerMode = false, origin = '') =>
   try {
     const arrayBuffer = await file.arrayBuffer();
     const uInt8Array = new Uint8Array(arrayBuffer);
-    const SQL = await initSqlJs({
-      locateFile: file => '/sql-wasm.wasm'
-    });
+    const SQL = await initializeSQL();
 
     // Initialize the database with the imported data
     dbInstance = new SQL.Database(uInt8Array);
@@ -269,10 +317,59 @@ export const importDatabase = async (file, isServerMode = false, origin = '') =>
 
     if (isServerMode && origin) {
       // Optionally, synchronize with the server
-      // This depends on your synchronization strategy
+      await syncWithServer(origin);
     }
   } catch (error) {
     console.error('Failed to import the database:', error);
+    throw error;
+  }
+};
+
+// Synchronize local database with the server
+export const syncWithServer = async (origin) => {
+  if (!origin) {
+    console.error('Server origin not provided.');
+    return;
+  }
+
+  try {
+    // Fetch entries from server
+    const response = await fetch(`${origin}/api/diary`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch entries from server.');
+    }
+    const serverEntries = await response.json();
+
+    // Fetch local entries
+    const localEntries = getEntries();
+
+    // Determine new entries to push to server
+    const localIds = localEntries.map(entry => entry.id);
+    const serverIds = serverEntries.map(entry => entry.id);
+    const newLocalEntries = localEntries.filter(entry => !serverIds.includes(entry.id));
+
+    // Push new local entries to server
+    for (let entry of newLocalEntries) {
+      const pushResponse = await fetch(`${origin}/api/diary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ content: entry.content, created_at: entry.created_at })
+      });
+
+      if (!pushResponse.ok) {
+        console.error(`Failed to push entry ID ${entry.id} to server.`);
+      }
+    }
+
+    // Optionally, fetch and merge tags similarly
+    // This depends on your server API capabilities
+
+    // Update local cache
+    saveDb(false);
+  } catch (error) {
+    console.error('Synchronization failed:', error);
     throw error;
   }
 };
