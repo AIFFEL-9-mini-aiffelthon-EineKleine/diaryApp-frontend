@@ -1,3 +1,5 @@
+// src/utils/database.js
+
 import initSqlJs from 'sql.js';
 
 // Constants
@@ -39,14 +41,9 @@ export const initDb = async (isServerMode = false, origin = '') => {
       createTables(dbInstance);
       insertEntries(dbInstance, entries);
 
-      // Fetch and insert tags
-      for (let entry of entries) {
-        const tagResponse = await fetch(`${origin}/api/tags/${entry.id}`);
-        if (tagResponse.ok) {
-          const tags = await tagResponse.json();
-          insertTags(dbInstance, entry.id, tags);
-        }
-      }
+      // Fetch and insert all tags from server
+      const allTags = await fetchAllTagsFromServer(origin);
+      insertTags(dbInstance, allTags);
 
       // Save to localStorage as cache
       saveDb(false);
@@ -107,10 +104,10 @@ const insertEntries = (db, entries) => {
 };
 
 // Insert tags into the database
-const insertTags = (db, entryId, tags) => {
+const insertTags = (db, tags) => {
   const stmt = db.prepare("INSERT INTO tags (id, entry_id, sentence_index, tag) VALUES (?, ?, ?, ?)");
   for (let tag of tags) {
-    stmt.run([tag.id, entryId, tag.sentence_index, tag.tag]);
+    stmt.run([tag.id, tag.entry_id, tag.sentence_index, tag.tag]);
   }
   stmt.free();
 };
@@ -333,79 +330,92 @@ export const syncWithServer = async (origin) => {
   }
 
   try {
-    // Fetch entries from server
-    const response = await fetch(`${origin}/api/diary`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch entries from server.');
-    }
-    const serverEntries = await response.json();
-
-    // Fetch local entries
+    // Push local entries to server
     const localEntries = getEntries();
-
-    // Determine new entries to push to server
-    const serverIds = serverEntries.map(entry => entry.id);
-    const newLocalEntries = localEntries.filter(entry => !serverIds.includes(entry.id));
-
-    // Push new local entries to server
-    for (let entry of newLocalEntries) {
-      const pushResponse = await fetch(`${origin}/api/diary`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ content: entry.content, created_at: entry.created_at })
-      });
-
-      if (!pushResponse.ok) {
-        console.error(`Failed to push entry ID ${entry.id} to server.`);
-      } else {
-        const data = await pushResponse.json();
-        console.log(`Pushed entry ID ${entry.id} to server with server ID ${data.entry_id}.`);
-      }
-    }
-
-    // Fetch and merge tags
     for (let entry of localEntries) {
-      const tagResponse = await fetch(`${origin}/api/tags/${entry.id}`);
-      if (tagResponse.ok) {
-        const serverTags = await tagResponse.json();
-        const localTags = getTagsForEntry(entry.id);
+      const response = await fetch(`${origin}/api/diary/${entry.id}`);
+      if (response.status === 404) {
+        // Entry does not exist on server, push it
+        const pushResponse = await fetch(`${origin}/api/diary`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ content: entry.content, created_at: entry.created_at })
+        });
 
-        // Determine new local tags to push
-        const serverTagIds = serverTags.map(tag => tag.id);
-        const newLocalTags = localTags.filter(tag => !serverTagIds.includes(tag.id));
-
-        // Push new local tags to server
-        for (let tag of newLocalTags) {
-          const pushTagResponse = await fetch(`${origin}/api/tags`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              entry_id: tag.entryId,
-              sentence_index: tag.sentenceIndex,
-              tag: tag.tag
-            })
-          });
-
-          if (!pushTagResponse.ok) {
-            console.error(`Failed to push tag ID ${tag.id} to server.`);
-          } else {
-            const data = await pushTagResponse.json();
-            console.log(`Pushed tag ID ${tag.id} to server with server Tag ID ${data.tag_id}.`);
-          }
+        if (!pushResponse.ok) {
+          console.error(`Failed to push entry ID ${entry.id} to server.`);
+        } else {
+          const data = await pushResponse.json();
+          console.log(`Pushed entry ID ${entry.id} to server with server ID ${data.entry_id}.`);
         }
       }
     }
 
-    // Optionally, fetching all tags from server and update local database is possible
+    // Fetch all tags from server
+    const allTagsFromServer = await fetchAllTagsFromServer(origin);
+    await updateLocalTags(allTagsFromServer, true, origin);
 
     // Update local cache
     saveDb(false);
   } catch (error) {
     console.error('Synchronization failed:', error);
+    throw error;
+  }
+};
+
+// New Function: Fetch all tags from server
+export const fetchAllTagsFromServer = async (origin) => {
+  try {
+    const response = await fetch(`${origin}/api/tags`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch tags from server.');
+    }
+    const tags = await response.json();
+    return tags;
+  } catch (error) {
+    console.error('Error fetching all tags from server:', error);
+    throw error;
+  }
+};
+
+// New Function: Update local database with fetched tags
+export const updateLocalTags = async (tags, isServerMode = false, origin = '') => {
+  if (!dbInstance) return;
+
+  try {
+    // Clear existing tags
+    dbInstance.run("DELETE FROM tags");
+
+    // Insert fetched tags
+    const stmt = dbInstance.prepare("INSERT INTO tags (id, entry_id, sentence_index, tag) VALUES (?, ?, ?, ?)");
+    for (let tag of tags) {
+      stmt.run([tag.id, tag.entry_id, tag.sentence_index, tag.tag]);
+    }
+    stmt.free();
+
+    saveDb(!isServerMode);
+
+    if (isServerMode && origin) {
+      // Optionally, handle any additional synchronization steps if needed
+      console.log('Local tags updated with server tags.');
+    }
+
+    // Update tagsMap state
+    const allEntries = getEntries();
+    const allTagsMap = {};
+    for (let entry of allEntries) {
+      const entryTags = tags.filter(tag => tag.entry_id === entry.id);
+      allTagsMap[entry.id] = entryTags.map(tag => ({
+        id: tag.id,
+        sentenceIndex: tag.sentence_index,
+        tag: tag.tag
+      }));
+    }
+    return allTagsMap;
+  } catch (error) {
+    console.error('Failed to update local tags:', error);
     throw error;
   }
 };

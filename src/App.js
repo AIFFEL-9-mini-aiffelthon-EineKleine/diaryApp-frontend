@@ -1,3 +1,5 @@
+// src/App.js
+
 import React, { useState, useEffect, useRef } from 'react';
 import Container from './components/Container';
 import DiaryBox from './components/DiaryBox';
@@ -20,7 +22,9 @@ import {
   addTag,
   getTagsForEntry,
   deleteTag,
-  syncWithServer
+  syncWithServer,
+  fetchAllTagsFromServer, // New function to fetch all tags
+  updateLocalTags
 } from './utils/database';
 import { splitIntoSentences } from './utils/helpers';
 
@@ -46,26 +50,29 @@ function App() {
         const allEntries = getEntries();
         setEntries(allEntries);
 
-        // Fetch tags for all entries
-        const allTags = {};
-        for (let entry of allEntries) {
-          const tags = getTagsForEntry(entry.id);
-          allTags[entry.id] = tags;
+        // Fetch all tags from server and update local database
+        if (isServerMode) {
+          const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
+          await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
+        } else {
+          // Fetch tags for all entries from local database
+          const allTags = {};
+          for (let entry of allEntries) {
+            const tags = getTagsForEntry(entry.id);
+            allTags[entry.id] = tags;
+          }
+          setTagsMap(allTags);
         }
-        setTagsMap(allTags);
 
         // If server mode is on, synchronize local changes with the server
         if (isServerMode) {
           await syncWithServer(serverOrigin);
           const updatedEntries = getEntries();
           setEntries(updatedEntries);
-          // Update tagsMap again after synchronization
-          const updatedTags = {};
-          for (let entry of updatedEntries) {
-            const tags = getTagsForEntry(entry.id);
-            updatedTags[entry.id] = tags;
-          }
-          setTagsMap(updatedTags);
+          
+          // Fetch all tags from server again after synchronization
+          const updatedTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
+          await updateLocalTags(updatedTagsFromServer, isServerMode, serverOrigin);
         }
       } catch (error) {
         console.error('Initialization failed:', error);
@@ -145,25 +152,29 @@ function App() {
         const allEntries = getEntries();
         setEntries(allEntries);
 
-        // Fetch tags for all entries
-        const allTags = {};
-        for (let entry of allEntries) {
-          const tags = getTagsForEntry(entry.id);
-          allTags[entry.id] = tags;
+        // Fetch all tags from server and update local database
+        if (isServerMode) {
+          const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
+          await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
+        } else {
+          // Fetch tags for all entries from local database
+          const allTags = {};
+          for (let entry of allEntries) {
+            const tags = getTagsForEntry(entry.id);
+            allTags[entry.id] = tags;
+          }
+          setTagsMap(allTags);
         }
-        setTagsMap(allTags);
 
         // If server mode is on, synchronize after import
         if (isServerMode) {
           await syncWithServer(serverOrigin);
           const updatedEntries = getEntries();
           setEntries(updatedEntries);
-          const updatedTags = {};
-          for (let entry of updatedEntries) {
-            const tags = getTagsForEntry(entry.id);
-            updatedTags[entry.id] = tags;
-          }
-          setTagsMap(updatedTags);
+          
+          // Fetch all tags from server again after synchronization
+          const updatedTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
+          await updateLocalTags(updatedTagsFromServer, isServerMode, serverOrigin);
         }
 
         setMessage({ text: 'Database imported successfully.', error: false });
@@ -189,8 +200,14 @@ function App() {
   const handleAddTag = async (entryId, sentenceIndex, tag) => {
     try {
       await addTag(entryId, sentenceIndex, tag, isServerMode, serverOrigin);
-      const tags = getTagsForEntry(entryId);
-      setTagsMap(prev => ({ ...prev, [entryId]: tags }));
+      // After adding a tag, fetch all tags from server and update local database
+      if (isServerMode) {
+        const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
+        await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
+      } else {
+        const tags = getTagsForEntry(entryId);
+        setTagsMap(prev => ({ ...prev, [entryId]: tags }));
+      }
       setMessage({ text: 'Tag added successfully.', error: false });
     } catch (error) {
       setMessage({ text: 'Failed to add tag.', error: true });
@@ -200,13 +217,19 @@ function App() {
   const handleDeleteTag = async (tagId) => {
     try {
       await deleteTag(tagId, isServerMode, serverOrigin);
-      // Remove the deleted tag from tagsMap
-      const updatedTagsMap = {};
-      for (let entryId in tagsMap) {
-        const updatedTags = tagsMap[entryId].filter(tag => tag.id !== tagId);
-        updatedTagsMap[entryId] = updatedTags;
+      // After deleting a tag, fetch all tags from server and update local database
+      if (isServerMode) {
+        const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
+        await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
+      } else {
+        // Remove the deleted tag from tagsMap
+        const updatedTagsMap = {};
+        for (let entryId in tagsMap) {
+          const updatedTags = tagsMap[entryId].filter(tag => tag.id !== tagId);
+          updatedTagsMap[entryId] = updatedTags;
+        }
+        setTagsMap(updatedTagsMap);
       }
-      setTagsMap(updatedTagsMap);
       setMessage({ text: 'Tag deleted successfully.', error: false });
     } catch (error) {
       setMessage({ text: 'Failed to delete tag.', error: true });
