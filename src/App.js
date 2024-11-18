@@ -11,11 +11,11 @@ import { EntryList, EntryItem, EntryDate } from './components/EntryList';
 import SentenceWithTooltip from './components/SentenceWithTooltip';
 import TagList from './components/TagList';
 
-import { 
-  initDb, 
-  addEntry, 
-  getEntries, 
-  exportDatabase, 
+import {
+  initDb,
+  addEntry,
+  getEntries,
+  exportDatabase,
   importDatabase,
   addTag,
   getTagsForEntry,
@@ -217,9 +217,9 @@ function App() {
     <Container>
       <DiaryBox>
         <ToggleContainer>
-          <ToggleSwitch 
-            checked={isServerMode} 
-            onChange={handleToggleChange} 
+          <ToggleSwitch
+            checked={isServerMode}
+            onChange={handleToggleChange}
             aria-label="Toggle server mode"
           />
           <ToggleLabel>Server Mode</ToggleLabel>
@@ -231,7 +231,7 @@ function App() {
           onChange={(e) => setContent(e.target.value)}
           aria-label="Diary entry textarea"
         />
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
           <SaveButton onClick={handleSubmit} disabled={!dbInitialized}>
             Save Entry
           </SaveButton>
@@ -270,14 +270,14 @@ function App() {
           {entries.map(entry => (
             <EntryItem key={entry.id}>
               <EntryDate>{new Date(entry.created_at).toLocaleString()}</EntryDate>
-              <div style={{ display: 'flex' }}>
+              <div style={{ display: 'flex', flexDirection: 'row', marginTop: '10px' }}>
                 <div style={{ flex: 1 }}>
                   <p style={{ whiteSpace: 'pre-wrap' }}>
                     {splitIntoSentences(entry.content).map((sentence, index) => {
                       const entryTags = tagsMap[entry.id] || [];
                       const tagsForSentence = entryTags.filter(t => t.sentenceIndex === index);
                       return (
-                        <SentenceWithTooltip 
+                        <SentenceWithTooltip
                           key={index}
                           sentence={sentence}
                           entryId={entry.id}
@@ -290,9 +290,9 @@ function App() {
                   </p>
                 </div>
                 <div style={{ width: '200px', marginLeft: '20px' }}>
-                  <TagList 
-                    tags={tagsMap[entry.id] || []} 
-                    onDeleteTag={handleDeleteTag} 
+                  <TagList
+                    tags={tagsMap[entry.id] || []}
+                    onDeleteTag={handleDeleteTag}
                   />
                 </div>
               </div>

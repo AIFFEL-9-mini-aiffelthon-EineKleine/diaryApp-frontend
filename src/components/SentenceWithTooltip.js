@@ -1,5 +1,3 @@
-// SentenceWithTooltip.js
-
 import React, { useState, useRef, useEffect } from 'react';
 import styled from 'styled-components';
 import TagTooltip from './TagTooltip';
@@ -19,7 +17,7 @@ function SentenceWithTooltip({
 }) {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
-  const [isInputFocused, setIsInputFocused] = useState(false); // New state to track input focus
+  const [isInputFocused, setIsInputFocused] = useState(false);
   const wrapperRef = useRef(null);
   const hideTimeoutRef = useRef(null);
 
@@ -95,8 +93,8 @@ function SentenceWithTooltip({
           onAddTag={(tag) => onAddTag(entryId, sentenceIndex, tag)}
           onClose={() => setIsTooltipVisible(false)}
           onMouseDown={handleInteractionStart}
-          onFocusInput={handleInputFocus} // Pass the focus handler
-          onBlurInput={handleInputBlur}   // Pass the blur handler
+          onFocusInput={handleInputFocus} // Pass the focus handler -- ⭐ for tooltip remaining (commit 810699...)
+          onBlurInput={handleInputBlur}   // Pass the blur handler  -- ⭐ for tooltip remaining (commit 810699...)
         />
       )}
     </Wrapper>

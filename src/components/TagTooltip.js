@@ -1,5 +1,3 @@
-// TagTooltip.js
-
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { SaveButton, DeleteTagButton } from './Buttons';
@@ -9,7 +7,7 @@ const TooltipContainer = styled.div`
   position: absolute;
   bottom: 100%; /* Positions above the sentence */
   left: 50%;
-  transform: translate(-50%); /* 5px offset removed for UX */
+  transform: translate(-50%);
   background: #343a40;
   color: #fff;
   padding: 10px;
@@ -75,8 +73,8 @@ function TagTooltip({
   existingTags,
   onAddTag,
   onClose,
-  onFocusInput, // New Prop
-  onBlurInput,  // New Prop
+  onFocusInput, // ⭐ for tooltip remaining (commit 810699...)
+  onBlurInput,  // ⭐ for tooltip remaining (commit 810699...)
 }) {
   const [newTag, setNewTag] = useState('');
   const inputRef = useRef(null);
@@ -88,7 +86,7 @@ function TagTooltip({
     }
   };
 
-  // useEffect to handle focus and blur events on the input
+  // Automatically focus the input when tooltip appears
   useEffect(() => {
     const inputElement = inputRef.current;
     if (!inputElement) return;
@@ -137,11 +135,10 @@ function TagTooltip({
       />
       <datalist id="predefined-tags">
         {/* Optional: Add predefined tag options */}
-        <option value="Work" />
-        <option value="Personal" />
-        <option value="Ideas" />
-        <option value="Important" />
-        <option value="⭐" />
+        <option value="행복😆" />
+        <option value="슬픔😥" />
+        <option value="지침😮‍💨" />
+        <option value="화남😡" />
       </datalist>
       <TagActions>
         <CancelButton onClick={onClose} aria-label="Cancel adding tag">
