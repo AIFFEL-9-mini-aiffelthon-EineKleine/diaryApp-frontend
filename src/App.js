@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import styled, { css } from 'styled-components';
 import Container from './components/Container';
 import DiaryBox from './components/DiaryBox';
 import Title from './components/Title';
 import TextArea from './components/TextArea';
-import { SaveButton, ImportButton, ExportButton, DeleteTagButton } from './components/Buttons';
+import { SaveButton, ImportButton, ExportButton } from './components/Buttons';
 import { ToggleContainer, ToggleLabel, ToggleSwitch } from './components/Toggle';
 import { ServerInputContainer, ServerInput } from './components/ServerInput';
 import Message from './components/Message';
 import { EntryList, EntryItem, EntryDate } from './components/EntryList';
-import { Sentence, Tooltip } from './components/Tagging';
-import { ModalOverlay, ModalContent, CloseButton } from './components/Modal';
+import SentenceWithTooltip from './components/SentenceWithTooltip';
+import TagList from './components/TagList';
 
 import { 
   initDb, 
@@ -34,10 +33,6 @@ function App() {
   const [isServerMode, setIsServerMode] = useState(false);
   const [serverOrigin, setServerOrigin] = useState('');
   const [isServerInputVisible, setIsServerInputVisible] = useState(false);
-  const [currentEntryId, setCurrentEntryId] = useState(null);
-  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(null);
-  const [currentTag, setCurrentTag] = useState('');
-  const [showModal, setShowModal] = useState(false);
   const [tagsMap, setTagsMap] = useState({}); // { entryId: [{id, sentenceIndex, tag}, ...], ... }
 
   const fileInputRef = useRef(null);
@@ -191,35 +186,27 @@ function App() {
     setServerOrigin(e.target.value);
   };
 
-  const handleAddTag = (entryId, sentenceIndex) => {
-    setCurrentEntryId(entryId);
-    setCurrentSentenceIndex(sentenceIndex);
-    setCurrentTag('');
-    setShowModal(true);
-  };
-
-  const handleSaveTag = async () => {
-    if (currentTag.trim() === '') {
-      setMessage({ text: 'Tag cannot be empty.', error: true });
-      return;
-    }
-
+  const handleAddTag = async (entryId, sentenceIndex, tag) => {
     try {
-      await addTag(currentEntryId, currentSentenceIndex, currentTag, isServerMode, serverOrigin);
-      const tags = getTagsForEntry(currentEntryId);
-      setTagsMap(prev => ({ ...prev, [currentEntryId]: tags }));
+      await addTag(entryId, sentenceIndex, tag, isServerMode, serverOrigin);
+      const tags = getTagsForEntry(entryId);
+      setTagsMap(prev => ({ ...prev, [entryId]: tags }));
       setMessage({ text: 'Tag added successfully.', error: false });
-      setShowModal(false);
     } catch (error) {
       setMessage({ text: 'Failed to add tag.', error: true });
     }
   };
 
-  const handleDeleteTag = async (entryId, tagId) => {
+  const handleDeleteTag = async (tagId) => {
     try {
       await deleteTag(tagId, isServerMode, serverOrigin);
-      const tags = getTagsForEntry(entryId);
-      setTagsMap(prev => ({ ...prev, [entryId]: tags }));
+      // Remove the deleted tag from tagsMap
+      const updatedTagsMap = {};
+      for (let entryId in tagsMap) {
+        const updatedTags = tagsMap[entryId].filter(tag => tag.id !== tagId);
+        updatedTagsMap[entryId] = updatedTags;
+      }
+      setTagsMap(updatedTagsMap);
       setMessage({ text: 'Tag deleted successfully.', error: false });
     } catch (error) {
       setMessage({ text: 'Failed to delete tag.', error: true });
@@ -233,6 +220,7 @@ function App() {
           <ToggleSwitch 
             checked={isServerMode} 
             onChange={handleToggleChange} 
+            aria-label="Toggle server mode"
           />
           <ToggleLabel>Server Mode</ToggleLabel>
         </ToggleContainer>
@@ -241,6 +229,7 @@ function App() {
           placeholder="Write your thoughts here..."
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          aria-label="Diary entry textarea"
         />
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
           <SaveButton onClick={handleSubmit} disabled={!dbInitialized}>
@@ -255,6 +244,7 @@ function App() {
             ref={fileInputRef}
             onChange={handleFileChange}
             style={{ display: 'none' }}
+            aria-hidden="true"
           />
         </div>
         <ServerInputContainer isOpen={isServerInputVisible}>
@@ -263,6 +253,7 @@ function App() {
             placeholder="Enter SQLite server origin (e.g., http://localhost:8000)"
             value={serverOrigin}
             onChange={handleServerOriginChange}
+            aria-label="SQLite server origin input"
           />
         </ServerInputContainer>
         <div style={{ marginTop: '10px', textAlign: 'center' }}>
@@ -279,54 +270,35 @@ function App() {
           {entries.map(entry => (
             <EntryItem key={entry.id}>
               <EntryDate>{new Date(entry.created_at).toLocaleString()}</EntryDate>
-              <p style={{ whiteSpace: 'pre-wrap' }}>
-                {splitIntoSentences(entry.content).map((sentence, index) => {
-                  const entryTags = tagsMap[entry.id] || [];
-                  const tag = entryTags.filter(t => t.sentenceIndex === index);
-                  return (
-                    <Sentence 
-                      key={index} 
-                      onDoubleClick={() => handleAddTag(entry.id, index)}
-                    >
-                      {sentence.trim() + ' '}
-                      {tag.length > 0 && (
-                        <Tooltip>
-                          {tag.map(t => (
-                            <span key={t.id}>
-                              {t.tag}
-                              <DeleteTagButton onClick={() => handleDeleteTag(entry.id, t.id)}>✕</DeleteTagButton>
-                              <br/>
-                            </span>
-                          ))}
-                        </Tooltip>
-                      )}
-                    </Sentence>
-                  );
-                })}
-              </p>
+              <div style={{ display: 'flex' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ whiteSpace: 'pre-wrap' }}>
+                    {splitIntoSentences(entry.content).map((sentence, index) => {
+                      const entryTags = tagsMap[entry.id] || [];
+                      const tagsForSentence = entryTags.filter(t => t.sentenceIndex === index);
+                      return (
+                        <SentenceWithTooltip 
+                          key={index}
+                          sentence={sentence}
+                          entryId={entry.id}
+                          sentenceIndex={index}
+                          existingTags={tagsForSentence}
+                          onAddTag={handleAddTag}
+                        />
+                      );
+                    })}
+                  </p>
+                </div>
+                <div style={{ width: '200px', marginLeft: '20px' }}>
+                  <TagList 
+                    tags={tagsMap[entry.id] || []} 
+                    onDeleteTag={handleDeleteTag} 
+                  />
+                </div>
+              </div>
             </EntryItem>
           ))}
         </EntryList>
-
-        {/* Tag Modal */}
-        {showModal && (
-          <ModalOverlay onClick={() => setShowModal(false)}>
-            <ModalContent onClick={e => e.stopPropagation()}>
-              <CloseButton onClick={() => setShowModal(false)}>×</CloseButton>
-              <h3>Add Tag</h3>
-              <input
-                type="text"
-                placeholder="Enter tag"
-                value={currentTag}
-                onChange={(e) => setCurrentTag(e.target.value)}
-                style={{ width: '100%', padding: '8px', marginBottom: '10px' }}
-              />
-              <SaveButton onClick={handleSaveTag} style={{ width: '100%' }}>
-                Save Tag
-              </SaveButton>
-            </ModalContent>
-          </ModalOverlay>
-        )}
       </DiaryBox>
     </Container>
   );
