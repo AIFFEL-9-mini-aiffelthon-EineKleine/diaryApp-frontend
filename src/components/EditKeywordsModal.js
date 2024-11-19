@@ -43,7 +43,7 @@ function EditKeywordsModal({ keywords, onKeywordsChange, onSave, onCancel }) {
   return (
     <ModalOverlay>
       <ModalContent>
-        <ModalTitle>Edit Keywords</ModalTitle>
+        <ModalTitle>Edit Emotions</ModalTitle>
         <input
           type="text"
           value={keywords}

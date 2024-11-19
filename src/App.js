@@ -367,7 +367,7 @@ function App() {
               <EntryDate>{new Date(entry.created_at).toLocaleString()}</EntryDate>
               {/* Display keywords */}
               <div style={{ marginTop: '5px', marginBottom: '10px' }}>
-                <strong>Keywords:</strong> {entry.keywords.join(', ')}
+                <strong>Emotions:</strong> {entry.keywords.join(', ')}
                 <button
                   style={{
                     marginLeft: '10px',
@@ -377,7 +377,7 @@ function App() {
                   }}
                   onClick={() => handleEditKeywordsClick(entry.id, entry.keywords)}
                 >
-                  Edit Keywords
+                  Edit Emotions
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'row', marginTop: '10px' }}>
