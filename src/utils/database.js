@@ -14,7 +14,7 @@ const initializeSQL = async () => {
   if (SQLInstance) return SQLInstance;
   try {
     SQLInstance = await initSqlJs({
-      locateFile: file => '/sql-wasm.wasm' // Ensure this path is correct. Also, can use `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm`
+      locateFile: file => `${process.env.PUBLIC_URL}/sql-wasm.wasm`
     });
     return SQLInstance;
   } catch (error) {
@@ -44,6 +44,10 @@ export const initDb = async (isServerMode = false, origin = '') => {
       // Fetch and insert all tags from server
       const allTags = await fetchAllTagsFromServer(origin);
       insertTags(dbInstance, allTags);
+
+      // Fetch and insert all keywords from server
+      const allKeywords = await fetchAllKeywordsFromServer(origin);
+      insertKeywords(dbInstance, allKeywords);
 
       // Save to localStorage as cache
       saveDb(false);
@@ -92,6 +96,14 @@ const createTables = (db) => {
       FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
     );
   `);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS keywords (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_id INTEGER NOT NULL,
+      keyword TEXT NOT NULL,
+      FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+    );
+  `);
 };
 
 // Insert entries into the database
@@ -112,8 +124,16 @@ const insertTags = (db, tags) => {
   stmt.free();
 };
 
+// Insert keywords into the database
+const insertKeywords = (db, keywords) => {
+  const stmt = db.prepare("INSERT INTO keywords (id, entry_id, keyword) VALUES (?, ?, ?)");
+  for (let kw of keywords) {
+    stmt.run([kw.id, kw.entry_id, kw.keyword]);
+  }
+  stmt.free();
+};
+
 // Save the database to localStorage
-// isLocal: boolean indicating if saving to localStorage (true) or server cache (false)
 export const saveDb = (isLocal = true) => {
   if (!dbInstance) return;
   const binaryArray = dbInstance.export();
@@ -127,13 +147,22 @@ export const saveDb = (isLocal = true) => {
 };
 
 // CRUD Operations for Entries
-export const addEntry = async (content, isServerMode = false, origin = '') => {
+export const addEntry = async (content, keywords = [], isServerMode = false, origin = '') => {
   if (!dbInstance) return;
 
   try {
     const stmt = dbInstance.prepare("INSERT INTO entries (content) VALUES (?)");
     stmt.run([content]);
+    const entryId = dbInstance.exec("SELECT last_insert_rowid() as id;")[0].values[0][0];
     stmt.free();
+
+    // Insert keywords into local DB
+    const keywordStmt = dbInstance.prepare("INSERT INTO keywords (entry_id, keyword) VALUES (?, ?)");
+    for (let kw of keywords) {
+      keywordStmt.run([entryId, kw]);
+    }
+    keywordStmt.free();
+
     saveDb(!isServerMode);
 
     if (isServerMode && origin) {
@@ -143,7 +172,7 @@ export const addEntry = async (content, isServerMode = false, origin = '') => {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ content, keywords })
       });
 
       if (!response.ok) {
@@ -165,10 +194,24 @@ export const getEntries = () => {
   const entries = [];
   while (stmt.step()) {
     const row = stmt.getAsObject();
-    entries.push(row);
+    entries.push({ ...row, keywords: getKeywordsForEntry(row.id) });
   }
   stmt.free();
   return entries;
+};
+
+// Function to get keywords for an entry
+export const getKeywordsForEntry = (entryId) => {
+  if (!dbInstance) return [];
+  const stmt = dbInstance.prepare("SELECT keyword FROM keywords WHERE entry_id = ?");
+  stmt.bind([entryId]);
+  const keywords = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    keywords.push(row.keyword);
+  }
+  stmt.free();
+  return keywords;
 };
 
 // Tagging Functions
@@ -207,7 +250,7 @@ export const addTag = async (entryId, sentenceIndex, tag, isServerMode = false, 
 export const getTagsForEntry = (entryId) => {
   if (!dbInstance) return [];
   const stmt = dbInstance.prepare("SELECT id, sentence_index, tag FROM tags WHERE entry_id = ?");
-  stmt.run([entryId]);
+  stmt.bind([entryId]);
   const tags = [];
   while (stmt.step()) {
     const row = stmt.getAsObject();
@@ -244,6 +287,47 @@ export const deleteTag = async (tagId, isServerMode = false, origin = '') => {
   }
 };
 
+// Update keywords for an entry
+export const updateEntryKeywords = async (entryId, keywords = [], isServerMode = false, origin = '') => {
+  if (!dbInstance) return;
+
+  try {
+    // Delete existing keywords for the entry
+    const deleteStmt = dbInstance.prepare("DELETE FROM keywords WHERE entry_id = ?");
+    deleteStmt.run([entryId]);
+    deleteStmt.free();
+
+    // Insert new keywords
+    const insertStmt = dbInstance.prepare("INSERT INTO keywords (entry_id, keyword) VALUES (?, ?)");
+    for (let kw of keywords) {
+      insertStmt.run([entryId, kw]);
+    }
+    insertStmt.free();
+
+    saveDb(!isServerMode);
+
+    if (isServerMode && origin) {
+      // Send updated keywords to server
+      const response = await fetch(`${origin}/api/diary/${entryId}/keywords`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ keywords })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update keywords on the server.');
+      }
+
+      console.log('Server Keywords Update Response:', await response.json());
+    }
+  } catch (error) {
+    console.error('Failed to update entry keywords:', error);
+    throw error;
+  }
+};
+
 // Export and Import Functions
 export const exportDatabase = (isServerMode = false) => {
   if (!dbInstance) {
@@ -257,7 +341,7 @@ export const exportDatabase = (isServerMode = false) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = isServerMode ? 'diary_server.db' : 'diary_local.db'; // Differentiate file names
+    a.download = isServerMode ? 'diary_server.db' : 'diary_local.db';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -309,6 +393,18 @@ export const importDatabase = async (file, isServerMode = false, origin = '') =>
       `);
     }
 
+    if (!tables.includes('keywords')) {
+      // Create keywords table if not present
+      dbInstance.run(`
+        CREATE TABLE IF NOT EXISTS keywords (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entry_id INTEGER NOT NULL,
+          keyword TEXT NOT NULL,
+          FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
+        );
+      `);
+    }
+
     saveDb(!isServerMode);
     console.log('Database imported successfully.');
 
@@ -341,7 +437,7 @@ export const syncWithServer = async (origin) => {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ content: entry.content, created_at: entry.created_at })
+          body: JSON.stringify({ content: entry.content, created_at: entry.created_at, keywords: entry.keywords })
         });
 
         if (!pushResponse.ok) {
@@ -350,12 +446,34 @@ export const syncWithServer = async (origin) => {
           const data = await pushResponse.json();
           console.log(`Pushed entry ID ${entry.id} to server with server ID ${data.entry_id}.`);
         }
+      } else {
+        // Entry exists, check for keyword updates
+        const serverEntry = await response.json();
+        if (JSON.stringify(serverEntry.keywords) !== JSON.stringify(entry.keywords)) {
+          // Update keywords on the server
+          const updateResponse = await fetch(`${origin}/api/diary/${entry.id}/keywords`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ keywords: entry.keywords })
+          });
+
+          if (!updateResponse.ok) {
+            console.error(`Failed to update keywords for entry ID ${entry.id} on server.`);
+          } else {
+            console.log(`Updated keywords for entry ID ${entry.id} on server.`);
+          }
+        }
       }
     }
 
-    // Fetch all tags from server
+    // Fetch all tags and keywords from server
     const allTagsFromServer = await fetchAllTagsFromServer(origin);
     await updateLocalTags(allTagsFromServer, true, origin);
+
+    const allKeywordsFromServer = await fetchAllKeywordsFromServer(origin);
+    await updateLocalKeywords(allKeywordsFromServer, true, origin);
 
     // Update local cache
     saveDb(false);
@@ -365,7 +483,7 @@ export const syncWithServer = async (origin) => {
   }
 };
 
-// New Function: Fetch all tags from server
+// Fetch all tags from server
 export const fetchAllTagsFromServer = async (origin) => {
   try {
     const response = await fetch(`${origin}/api/tags`);
@@ -380,7 +498,7 @@ export const fetchAllTagsFromServer = async (origin) => {
   }
 };
 
-// New Function: Update local database with fetched tags
+// Update local database with fetched tags
 export const updateLocalTags = async (tags, isServerMode = false, origin = '') => {
   if (!dbInstance) return;
 
@@ -397,25 +515,47 @@ export const updateLocalTags = async (tags, isServerMode = false, origin = '') =
 
     saveDb(!isServerMode);
 
-    if (isServerMode && origin) {
-      // Optionally, handle any additional synchronization steps if needed
-      console.log('Local tags updated with server tags.');
-    }
-
-    // Update tagsMap state
-    const allEntries = getEntries();
-    const allTagsMap = {};
-    for (let entry of allEntries) {
-      const entryTags = tags.filter(tag => tag.entry_id === entry.id);
-      allTagsMap[entry.id] = entryTags.map(tag => ({
-        id: tag.id,
-        sentenceIndex: tag.sentence_index,
-        tag: tag.tag
-      }));
-    }
-    return allTagsMap;
+    console.log('Local tags updated with server tags.');
   } catch (error) {
     console.error('Failed to update local tags:', error);
+    throw error;
+  }
+};
+
+// Fetch all keywords from server
+export const fetchAllKeywordsFromServer = async (origin) => {
+  try {
+    const response = await fetch(`${origin}/api/keywords`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch keywords from server.');
+    }
+    const keywords = await response.json();
+    return keywords;
+  } catch (error) {
+    console.error('Error fetching all keywords from server:', error);
+    throw error;
+  }
+};
+
+// Update local database with fetched keywords
+export const updateLocalKeywords = async (keywords, isServerMode = false, origin = '') => {
+  if (!dbInstance) return;
+
+  try {
+    // Clear existing keywords
+    dbInstance.run("DELETE FROM keywords");
+
+    // Insert fetched keywords
+    const stmt = dbInstance.prepare("INSERT INTO keywords (id, entry_id, keyword) VALUES (?, ?, ?)");
+    for (let kw of keywords) {
+      stmt.run([kw.id, kw.entry_id, kw.keyword]);
+    }
+    stmt.free();
+
+    saveDb(!isServerMode);
+    console.log('Local keywords updated with server keywords.');
+  } catch (error) {
+    console.error('Failed to update local keywords:', error);
     throw error;
   }
 };

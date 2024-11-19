@@ -12,6 +12,7 @@ import Message from './components/Message';
 import { EntryList, EntryItem, EntryDate } from './components/EntryList';
 import SentenceWithTooltip from './components/SentenceWithTooltip';
 import TagList from './components/TagList';
+import EditKeywordsModal from './components/EditKeywordsModal'; // New import
 
 import {
   initDb,
@@ -23,21 +24,27 @@ import {
   getTagsForEntry,
   deleteTag,
   syncWithServer,
-  fetchAllTagsFromServer, // New function to fetch all tags
-  updateLocalTags
+  fetchAllTagsFromServer,
+  updateLocalTags,
+  fetchAllKeywordsFromServer,
+  updateLocalKeywords,
+  updateEntryKeywords, // New import
 } from './utils/database';
 import { splitIntoSentences } from './utils/helpers';
 
 function App() {
   // State variables
   const [content, setContent] = useState('');
-  const [message, setMessage] = useState(null); // { text: '', error: boolean }
+  const [keywords, setKeywords] = useState('');
+  const [message, setMessage] = useState(null);
   const [entries, setEntries] = useState([]);
   const [dbInitialized, setDbInitialized] = useState(false);
   const [isServerMode, setIsServerMode] = useState(false);
   const [serverOrigin, setServerOrigin] = useState('');
   const [isServerInputVisible, setIsServerInputVisible] = useState(false);
-  const [tagsMap, setTagsMap] = useState({}); // { entryId: [{id, sentenceIndex, tag}, ...], ... }
+  const [tagsMap, setTagsMap] = useState({});
+  const [editingKeywordsEntryId, setEditingKeywordsEntryId] = useState(null); // New state
+  const [editingKeywords, setEditingKeywords] = useState(''); // New state
 
   const fileInputRef = useRef(null);
 
@@ -50,29 +57,34 @@ function App() {
         const allEntries = getEntries();
         setEntries(allEntries);
 
-        // Fetch all tags from server and update local database
-        if (isServerMode) {
-          const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
-          await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
-        } else {
-          // Fetch tags for all entries from local database
-          const allTags = {};
-          for (let entry of allEntries) {
-            const tags = getTagsForEntry(entry.id);
-            allTags[entry.id] = tags;
-          }
-          setTagsMap(allTags);
+        // Fetch tags for all entries
+        const allTags = {};
+        for (let entry of allEntries) {
+          const tags = getTagsForEntry(entry.id);
+          allTags[entry.id] = tags;
         }
+        setTagsMap(allTags);
 
         // If server mode is on, synchronize local changes with the server
         if (isServerMode) {
           await syncWithServer(serverOrigin);
           const updatedEntries = getEntries();
           setEntries(updatedEntries);
-          
-          // Fetch all tags from server again after synchronization
+
+          // Fetch all tags and keywords from server after synchronization
           const updatedTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
           await updateLocalTags(updatedTagsFromServer, isServerMode, serverOrigin);
+
+          const updatedKeywordsFromServer = await fetchAllKeywordsFromServer(serverOrigin);
+          await updateLocalKeywords(updatedKeywordsFromServer, isServerMode, serverOrigin);
+
+          // Update tagsMap after synchronization
+          const updatedTagsMap = {};
+          for (let entry of updatedEntries) {
+            const tags = getTagsForEntry(entry.id);
+            updatedTagsMap[entry.id] = tags;
+          }
+          setTagsMap(updatedTagsMap);
         }
       } catch (error) {
         console.error('Initialization failed:', error);
@@ -89,7 +101,8 @@ function App() {
     }
 
     try {
-      await addEntry(content, isServerMode, serverOrigin);
+      const keywordList = keywords.split(',').map(kw => kw.trim()).filter(kw => kw);
+      await addEntry(content, keywordList, isServerMode, serverOrigin);
       const allEntries = getEntries();
       setEntries(allEntries);
 
@@ -102,8 +115,10 @@ function App() {
       setTagsMap(allTags);
 
       setContent('');
+      setKeywords('');
       setMessage({ text: 'Diary entry saved successfully.', error: false });
     } catch (error) {
+      console.error('Failed to save the entry:', error);
       setMessage({ text: 'Failed to save the entry.', error: true });
     }
   };
@@ -152,10 +167,13 @@ function App() {
         const allEntries = getEntries();
         setEntries(allEntries);
 
-        // Fetch all tags from server and update local database
+        // Fetch all tags and keywords from server and update local database
         if (isServerMode) {
           const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
           await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
+
+          const allKeywordsFromServer = await fetchAllKeywordsFromServer(serverOrigin);
+          await updateLocalKeywords(allKeywordsFromServer, isServerMode, serverOrigin);
         } else {
           // Fetch tags for all entries from local database
           const allTags = {};
@@ -171,14 +189,26 @@ function App() {
           await syncWithServer(serverOrigin);
           const updatedEntries = getEntries();
           setEntries(updatedEntries);
-          
-          // Fetch all tags from server again after synchronization
+
+          // Fetch all tags and keywords from server again after synchronization
           const updatedTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
           await updateLocalTags(updatedTagsFromServer, isServerMode, serverOrigin);
+
+          const updatedKeywordsFromServer = await fetchAllKeywordsFromServer(serverOrigin);
+          await updateLocalKeywords(updatedKeywordsFromServer, isServerMode, serverOrigin);
+
+          // Update tagsMap after synchronization
+          const updatedTagsMap = {};
+          for (let entry of updatedEntries) {
+            const tags = getTagsForEntry(entry.id);
+            updatedTagsMap[entry.id] = tags;
+          }
+          setTagsMap(updatedTagsMap);
         }
 
         setMessage({ text: 'Database imported successfully.', error: false });
       } catch (error) {
+        console.error('Failed to import the database:', error);
         setMessage({ text: 'Failed to import the database.', error: true });
       } finally {
         // Reset the file input
@@ -200,45 +230,69 @@ function App() {
   const handleAddTag = async (entryId, sentenceIndex, tag) => {
     try {
       await addTag(entryId, sentenceIndex, tag, isServerMode, serverOrigin);
-      // After adding a tag, fetch all tags from server and update local database
-      if (isServerMode) {
-        const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
-        await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
-      } else {
-        const tags = getTagsForEntry(entryId);
-        setTagsMap(prev => ({ ...prev, [entryId]: tags }));
-      }
+
+      // Update tagsMap after adding a tag
+      const updatedTags = getTagsForEntry(entryId);
+      setTagsMap(prev => ({ ...prev, [entryId]: updatedTags }));
+
       setMessage({ text: 'Tag added successfully.', error: false });
     } catch (error) {
+      console.error('Failed to add tag:', error);
       setMessage({ text: 'Failed to add tag.', error: true });
     }
   };
 
-  const handleDeleteTag = async (tagId) => {
+  const handleDeleteTag = async (tagId, entryId) => {
     try {
       await deleteTag(tagId, isServerMode, serverOrigin);
-      // After deleting a tag, fetch all tags from server and update local database
-      if (isServerMode) {
-        const allTagsFromServer = await fetchAllTagsFromServer(serverOrigin);
-        await updateLocalTags(allTagsFromServer, isServerMode, serverOrigin);
-      } else {
-        // Remove the deleted tag from tagsMap
-        const updatedTagsMap = {};
-        for (let entryId in tagsMap) {
-          const updatedTags = tagsMap[entryId].filter(tag => tag.id !== tagId);
-          updatedTagsMap[entryId] = updatedTags;
-        }
-        setTagsMap(updatedTagsMap);
-      }
+
+      // Update tagsMap after deleting a tag
+      const updatedTags = getTagsForEntry(entryId);
+      setTagsMap(prev => ({ ...prev, [entryId]: updatedTags }));
+
       setMessage({ text: 'Tag deleted successfully.', error: false });
     } catch (error) {
+      console.error('Failed to delete tag:', error);
       setMessage({ text: 'Failed to delete tag.', error: true });
     }
+  };
+
+  const handleEditKeywordsClick = (entryId, currentKeywords) => {
+    setEditingKeywordsEntryId(entryId);
+    setEditingKeywords(currentKeywords.join(', '));
+  };
+
+  const handleKeywordsChange = (e) => {
+    setEditingKeywords(e.target.value);
+  };
+
+  const handleSaveKeywords = async () => {
+    try {
+      const keywordList = editingKeywords.split(',').map(kw => kw.trim()).filter(kw => kw);
+      await updateEntryKeywords(editingKeywordsEntryId, keywordList, isServerMode, serverOrigin);
+
+      // Update entries state
+      const updatedEntries = getEntries();
+      setEntries(updatedEntries);
+
+      setEditingKeywordsEntryId(null);
+      setEditingKeywords('');
+      setMessage({ text: 'Keywords updated successfully.', error: false });
+    } catch (error) {
+      console.error('Failed to update keywords:', error);
+      setMessage({ text: 'Failed to update keywords.', error: true });
+    }
+  };
+
+  const handleCancelEditKeywords = () => {
+    setEditingKeywordsEntryId(null);
+    setEditingKeywords('');
   };
 
   return (
     <Container>
       <DiaryBox>
+        {/* Existing components */}
         <ToggleContainer>
           <ToggleSwitch
             checked={isServerMode}
@@ -263,6 +317,24 @@ function App() {
           onChange={(e) => setContent(e.target.value)}
           aria-label="Diary entry textarea"
         />
+        {/* New input field for keywords */}
+        <input
+          type="text"
+          placeholder="Enter keywords separated by commas"
+          value={keywords}
+          onChange={(e) => setKeywords(e.target.value)}
+          aria-label="Keywords input"
+          style={{
+            width: '100%',
+            padding: '10px',
+            marginTop: '10px',
+            borderRadius: '8px',
+            border: '2px solid #ced4da',
+            fontSize: '16px',
+            fontFamily: 'inherit',
+          }}
+        />
+        {/* Buttons */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px' }}>
           <SaveButton onClick={handleSubmit} disabled={!dbInitialized}>
             Save Entry
@@ -293,6 +365,21 @@ function App() {
           {entries.map(entry => (
             <EntryItem key={entry.id}>
               <EntryDate>{new Date(entry.created_at).toLocaleString()}</EntryDate>
+              {/* Display keywords */}
+              <div style={{ marginTop: '5px', marginBottom: '10px' }}>
+                <strong>Keywords:</strong> {entry.keywords.join(', ')}
+                <button
+                  style={{
+                    marginLeft: '10px',
+                    padding: '5px 10px',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => handleEditKeywordsClick(entry.id, entry.keywords)}
+                >
+                  Edit Keywords
+                </button>
+              </div>
               <div style={{ display: 'flex', flexDirection: 'row', marginTop: '10px' }}>
                 <div style={{ flex: 1 }}>
                   <p style={{ whiteSpace: 'pre-wrap' }}>
@@ -315,7 +402,7 @@ function App() {
                 <div style={{ width: '200px', marginLeft: '20px' }}>
                   <TagList
                     tags={tagsMap[entry.id] || []}
-                    onDeleteTag={handleDeleteTag}
+                    onDeleteTag={(tagId) => handleDeleteTag(tagId, entry.id)}
                   />
                 </div>
               </div>
@@ -323,6 +410,16 @@ function App() {
           ))}
         </EntryList>
       </DiaryBox>
+
+      {/* Edit Keywords Modal */}
+      {editingKeywordsEntryId !== null && (
+        <EditKeywordsModal
+          keywords={editingKeywords}
+          onKeywordsChange={handleKeywordsChange}
+          onSave={handleSaveKeywords}
+          onCancel={handleCancelEditKeywords}
+        />
+      )}
     </Container>
   );
 }
