@@ -32,16 +32,19 @@ function SentenceWithTooltip({
 
   // Handle mouse leaving the wrapper (sentence)
   const handleMouseLeave = (event) => {
+    // Get the related target
+    const relatedTarget = event.relatedTarget;
+
     // Check if the mouse is still within the wrapper
     if (
       wrapperRef.current &&
-      !wrapperRef.current.contains(event.relatedTarget)
+      (!relatedTarget || !(relatedTarget instanceof Node) || !wrapperRef.current.contains(relatedTarget))
     ) {
       hideTimeoutRef.current = setTimeout(() => {
-        if (!isInteracting && !isInputFocused) { // Updated condition to check input focus
+        if (!isInteracting && !isInputFocused) {
           setIsTooltipVisible(false);
         }
-      }, 0); // Increase delay to accommodate interactions
+      }, 0);
     }
   };
 
@@ -93,8 +96,8 @@ function SentenceWithTooltip({
           onAddTag={(tag) => onAddTag(entryId, sentenceIndex, tag)}
           onClose={() => setIsTooltipVisible(false)}
           onMouseDown={handleInteractionStart}
-          onFocusInput={handleInputFocus} // Pass the focus handler -- ⭐ for tooltip remaining (commit 810699...)
-          onBlurInput={handleInputBlur}   // Pass the blur handler  -- ⭐ for tooltip remaining (commit 810699...)
+          onFocusInput={handleInputFocus} // Pass the focus handler
+          onBlurInput={handleInputBlur}   // Pass the blur handler
         />
       )}
     </Wrapper>
