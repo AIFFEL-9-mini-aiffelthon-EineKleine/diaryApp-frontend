@@ -8,8 +8,9 @@ export const EntryItem = styled.div`
   background: #ffffff;
   padding: 15px;
   border-left: 4px solid #495057;
-  margin-bottom: 10px;
-  border-radius: 4px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  box-shadow: 2px 4px 8px rgba(0, 0, 0, 0.1);
 `;
 
 export const EntryDate = styled.span`

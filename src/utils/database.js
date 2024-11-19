@@ -14,7 +14,7 @@ const initializeSQL = async () => {
   if (SQLInstance) return SQLInstance;
   try {
     SQLInstance = await initSqlJs({
-      locateFile: file => '/sql-wasm.wasm' // Ensure this path is correct
+      locateFile: file => '/sql-wasm.wasm' // Ensure this path is correct. Also, can use `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.6.1/sql-wasm.wasm`
     });
     return SQLInstance;
   } catch (error) {

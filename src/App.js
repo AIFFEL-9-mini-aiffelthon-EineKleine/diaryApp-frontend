@@ -247,6 +247,15 @@ function App() {
           />
           <ToggleLabel>Server Mode</ToggleLabel>
         </ToggleContainer>
+        <ServerInputContainer isOpen={isServerInputVisible}>
+          <ServerInput
+            type="text"
+            placeholder="Enter SQLite server origin (e.g., http://localhost:8000)"
+            value={serverOrigin}
+            onChange={handleServerOriginChange}
+            aria-label="SQLite server origin input"
+          />
+        </ServerInputContainer>
         <Title>My Diary</Title>
         <TextArea
           placeholder="Write your thoughts here..."
@@ -270,15 +279,6 @@ function App() {
             aria-hidden="true"
           />
         </div>
-        <ServerInputContainer isOpen={isServerInputVisible}>
-          <ServerInput
-            type="text"
-            placeholder="Enter SQLite server origin (e.g., http://localhost:8000)"
-            value={serverOrigin}
-            onChange={handleServerOriginChange}
-            aria-label="SQLite server origin input"
-          />
-        </ServerInputContainer>
         <div style={{ marginTop: '10px', textAlign: 'center' }}>
           <ExportButton onClick={handleExport} disabled={!dbInitialized}>
             Export Database
