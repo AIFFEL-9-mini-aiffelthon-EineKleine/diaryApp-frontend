@@ -1,70 +1,113 @@
-# Getting Started with Create React App
+# Diary Application (front-end)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> This is the frontend of a diary application that allows users to write diary entries, associate keywords (emotions) with entries, and tag specific sentences within entries. The application is built with React and utilizes `sql.js` to handle an in-browser SQLite database. It supports both local storage and synchronization with a backend server.
 
-## Available Scripts
+## 1. Quick Start
 
-In the project directory, you can run:
+### 1.1 Prerequisites
 
-### `npm start`
+- **Node.js**: Version 12 or higher
+- **npm**: Comes with Node.js
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### 1.2 Steps
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+1. **Clone the Repository**
+    ```bash
+    git clone https://github.com/AIFFEL-9-mini-aiffelthon-EineKleine/diaryApp-frontend
+    cd diaryApp-frontend
+    ```
+2. **Install Dependencies**
+    ```bash
+    npm install
+    ```
+3. **Place `sql-wasm.wasm` File**
+    - Download `sql-wasm.wasm` from the [SQL.js GitHub repo](https://github.com/sql-js/sql.js/releases) (choose wasm version).
+	    - For direct download, click [here (v1.12.0)](https://github.com/sql-js/sql.js/releases/download/v1.12.0/sqljs-wasm.zip).
+    - Place the `sql-wasm.wasm` file in the `public` directory of the frontend project.
+    - **OR**, since `sql-wasm.wasm` comes with the node package installation,  
+      executing the script below will conclude to the same result.
+      ```bash
+      cp node_modules/sql.js/dist/sql-wasm.wasm public/sql-wasm.wasm
+      ```
+4. **Start the React Application**
+    ```bash
+    npm start
+    ```
+    - The application will open in your default browser at `http://localhost:3000`.
 
-### `npm test`
+## 2. Features
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+- **Add Diary Entries**: Write and save diary entries with optional keywords (emotions).
+- **Edit Keywords**: Modify the keywords associated with each diary entry directly from the UI.
+- **Sentence Tagging**: Tag specific sentences within diary entries.
+- **Local and Server Modes**: Operate in local mode (data stored in browser) or server mode (data synchronized with backend server).
+- **Import/Export Database**: Import an existing SQLite database or export the current database.
+- **Synchronization**: Synchronize local changes with the backend server in server mode.
+- **Responsive UI**: User-friendly interface built with React and styled-components.
 
-### `npm run build`
+## 3. Technologies Used
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- **React**: JavaScript library for building user interfaces.
+	- **styled-components**: CSS-in-JS library for styling React components.
+- **SQL.js**: JavaScript library that runs SQLite databases directly in the browser.
+	- **WebAssembly**: Used by SQL.js via `sql-wasm.wasm` for efficient database operations.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## 4. Configuration
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### 4.1 Server Origin
 
-### `npm run eject`
+- When running in server mode, input the backend server's origin (e.g., `http://localhost:8000`) in the application.
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+### 4.2 CORS Settings
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+- Ensure that the backend server's CORS settings allow requests from the frontend's origin (`http://localhost:3000` by default).
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## 5. Usage
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+1. **Local Mode**
+    - By default, the application operates in local mode.
+    - Entries, keywords, and tags are stored in the browser's local storage.
+2. **Server Mode**
+    - Toggle the "Server Mode" switch in the application.
+    - Enter the backend server's origin (e.g., `http://localhost:8000`).
+    - The application will synchronize data with the backend server.
+3. **Adding Entries**
+    - Write your diary entry in the text area.
+    - Optionally, add keywords separated by commas.
+    - Click **Save Entry** to save.
+4. **Editing Keywords**
+    - In the list of entries, click **Edit Keywords** next to the entry you wish to modify.
+    - Update the keywords and click **Save**.
+5. **Tagging Sentences**
+    - Hover over a sentence in an entry to display the tagging tooltip.
+    - Add tags to specific sentences.
+6. **Importing/Exporting Database**
+    - **Import**: Click **Import Database** and select a `.db` or `.sqlite` file.
+    - **Export**: Click **Export Database** to download the current database.
 
-## Learn More
+## 6. Project Structure
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```text
+diary-app-frontend/
+├── public/
+│   ├── index.html
+│   └── sql-wasm.wasm
+├── src/
+│   ├── components/
+│   ├── utils/
+│   ├── App.js
+│   └── index.js
+├── package.json
+└── README.md
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
 
-### Code Splitting
+---
+## License
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+This project is licensed under the MIT License.
 
-### Analyzing the Bundle Size
+## Acknowledgments
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- SQL.js for providing SQLite functionality in the browser.
+- [React](https://reactjs.org/) for the frontend framework.
